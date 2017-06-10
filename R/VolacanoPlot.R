@@ -14,6 +14,12 @@ VolcanoPlot <- function(data             = data,
                         sig              = 0.05,
                         FCcutoff         = FALSE,
                         logBase.pvalue   = 10,
+			colors           = c(non.sign = "gray65",
+					     sign.num = "red",
+					     sign.den = "blue"),
+			labels           = c("No regulation",
+					     "Up-regulated",
+					     "Down-regulated"),
                         ylimUp           = FALSE,
                         ylimDown         = FALSE,
                         xlimUp           = FALSE,
@@ -151,79 +157,61 @@ VolcanoPlot <- function(data             = data,
       	stop("Please check labels of Fold Changes. FC should be expressed as log2FC or log10FC")
       }
     
-    	if (is.numeric(FCcutoff) & FCcutoff > 0) {
-      		data$colgroup <- "black"
-      
-        		data[data[, prob]  < sig & data[, fc.cutoff] >  log(FCcutoff, base = fc.cutoff.base), "colgroup"] <- "red"
-        		data[data[, prob]  < sig & data[, fc.cutoff] < -log(FCcutoff, base = fc.cutoff.base), "colgroup"] <- "blue"
-          	} else {
-          data[data[, prob]  >= sig, "colgroup"] <- "black"
-      		data[data[, prob]  < sig & data[, grepl("log[12][0]?FC", colnames(data))] > 0, "colgroup"] <- "red"    #
-      		data[data[, prob]  < sig & data[, grepl("log[12][0]?FC", colnames(data))] < 0, "colgroup"] <- "blue" 
+	 data$colgroup <- colors[1]
+     if (is.numeric(FCcutoff) & FCcutoff > 0) {
+      	data[data[, prob]  < sig & data[, fc.cutoff] >  log(FCcutoff, base = fc.cutoff.base), "colgroup"] <- colors[2]
+        data[data[, prob]  < sig & data[, fc.cutoff] < -log(FCcutoff, base = fc.cutoff.base), "colgroup"] <- colors[3]
+       	} else {
+      	data[data[, prob]  < sig & data[, fc.cutoff] > 0, "colgroup"] <- colors[2]    #
+      	data[data[, prob]  < sig & data[, fc.cutoff] < 0, "colgroup"] <- colors[3] 
       }
     
-     	data$colgroup <- factor(data$colgroup, levels=c("black", "blue", "red"))
+     	data$colgroup <- factor(data$colgroup, levels = colors)
     
     	## for multiple volcano plots, 
-    	for(i in 1:nlevels(data$Label)) {
+    	for(i in seq_along(levels(data$Label))) {
       
-      		sub <- data[data$Label == levels(data$Label)[i], ]
-      
-      		if (logBase.pvalue == 2) {
-        		sub[, prob] [sub[, prob]  < 2^(-y.limUp)] <- 2^(-y.limUp)
-      		}
-      
-      		if (logBase.pvalue == 10) {
-        		sub[, prob] [sub[, prob]  < 10^(-y.limUp)] <- 10^(-y.limUp)
-      		}
-      
+      		sub <- data[data$Label == levels(data$Label)[i], ]   		
+        	sub[, prob] [sub[, prob]  < logBase.pvalue^(-y.limUp)] <- logBase.pvalue^(-y.limUp)
       		sub <- as.data.frame(sub)
       
       		## ylimUp
-      		if (logBase.pvalue == 2) {
-        		y.limup <- ceiling(max(-log2(sub[!is.na(sub[, prob] ), prob])))
-        		if (y.limup < (-log2(sig))) {
-        			y.limup <- (-log2(sig) + 1) ## for too small y.lim
-        		}
-      		}
-      
-     	 	if (logBase.pvalue == 10) {
-        		y.limup <- ceiling(max(-log10(sub[!is.na(sub[, prob] ), prob])))
-        		if (y.limup < (-log10(sig))) {
-        			y.limup <- (-log10(sig) + 1) ## for too small y.lim
-        		}
-      		}
+        	y.limup <- ceiling(max(-log(sub[!is.na(sub[, prob]), prob], base = logBase.pvalue)))
+        	if (y.limup < (-log(sig, base = logBase.pvalue))) {
+        		y.limup <- (-log(sig, base = logBase.pvalue) + 1) ## for too small y.lim
+        	}
+      		
        
       		## ylimDown
-      		y.limdown <- 0 ## default is zero
       		if (is.numeric(ylimDown)) {
       			y.limdown <- ylimDown
-      		}
+      		} else {
+		        y.limdown <- 0 ## default is zero
+		}
       
       		## x.lim
-      		x.lim <- ceiling(max(abs(sub[!is.na(sub[, 3]) & abs(sub[, 3]) != Inf , 3]))) ## log2FC or log10FC
-      		if (x.lim < 3) {
-      			x.lim <- 3
-      		}
+      		
+      		
       		if (is.numeric(xlimUp)) {
       			x.lim <- xlimUp
-      		}
+      		} else {
+		        x.lim <- ceiling(max(abs(sub[!is.na(sub[, fc.cutoff]) & abs(sub[, fc.cutoff]) != Inf , fc.cutoff]))) ## log2FC or log10FC
+		        if (x.lim < 3) {
+      			x.lim <- 3
+      			}
+		}
+		
       
       		## for assigning x in ggplot2
       		subtemp <- sub
-      		colnames(subtemp)[3] <- "logFC"
-      
-      		if (logBase.pvalue == 2) {
-        		subtemp$log2adjp <- (-log2(subtemp[, prob] ))
-      		}
-      
-      		if (logBase.pvalue == 10) {
-        		subtemp$log10adjp <- (-log10(subtemp[, prob] ))
-        	}
+      		colnames(subtemp)[fc.cutoff] <- "logFC"	
+		
+		##log-prob
+         	subtemp$log.adjp <- (-log(subtemp[, prob], base = logBase.pvalue))
         	
         	## for x limit for inf or -inf
         	subtemp$newlogFC <- subtemp$logFC
-        	subtemp[!is.na(subtemp$issue) & subtemp$issue == "oneConditionMissing" & subtemp$logFC == Inf, "newlogFC"] <- (x.lim - 0.2)
+        	subtemp[!is.na(subtemp$issue) & subtemp$issue == "oneConditionMissing" & subtemp$logFC == Inf,    "newlogFC"] <- (x.lim - 0.2)
         	subtemp[!is.na(subtemp$issue) & subtemp$issue == "oneConditionMissing" & subtemp$logFC == (-Inf), "newlogFC"] <- (x.lim - 0.2) *(-1)
         	
         	## add (*) in Protein name for Inf or -Inf
@@ -232,39 +220,18 @@ VolcanoPlot <- function(data             = data,
 
       
       		## Plotting
-      		if (logBase.pvalue == 2) {
-        		ptemp <- ggplot(aes_string(x='logFC', y='log2adjp', color='colgroup', label='Protein'), data=subtemp)+
-        				geom_point(size=dot.size)+
-        				scale_colour_manual(values=c("gray65", "blue", "red"), 
-        				                    limits=c("black", "blue", "red"), 
-        				                    breaks=c("black", "blue", "red"), 
-        				                    labels=c("No regulation", "Down-regulated", "Up-regulated"))+
-        				scale_y_continuous('-Log2 (adjusted p-value)', 
-        				                   limits=c(y.limdown, y.limup))+
-        				labs(title=unique(sub$Label))
+      		ptemp <- ggplot(aes_string(x='logFC', y='log.adjp', color='colgroup', label='Protein'), data=subtemp) +
+        			geom_point(size=dot.size)+
+        			scale_colour_manual(values = colors, 
+        			                    labels = labels) +
+        			scale_y_continuous(paste0('-Log', logBase.pvalue, ' (', prob.name ')'), 
+        			                   limits = c(y.limdown, y.limup)) +
+        			labs(title = unique(sub$Label))
       		}
-      
-      		if (logBase.pvalue == 10) {
-        		ptemp <- ggplot(aes_string(x='logFC', y='log10adjp', color='colgroup', label='Protein'), data=subtemp)+
-        				geom_point(size=dot.size)+
-        				scale_colour_manual(values=c("gray65", "blue", "red"), 
-        				                    limits=c("black", "blue", "red"), 
-        				                    breaks=c("black", "blue", "red"), 
-        				                    labels=c("No regulation", "Down-regulated", "Up-regulated"))+
-        				scale_y_continuous('-Log10 (adjusted p-value)', 
-        				                   limits=c(y.limdown, y.limup))+
-        				labs(title=unique(sub$Label))
-        	}
-      
       
      		## x-axis labeling
-      		if (colnames(sub)[3] == "log2FC") {
-      			ptemp <- ptemp+scale_x_continuous('Log2 fold change', limits=c(-x.lim, x.lim))
-      		}
-      		if (colnames(sub)[3] == "log10FC") {
-      			ptemp <- ptemp+scale_x_continuous('Log10 fold change', limits=c(-x.lim, x.lim))
-      		}
-      
+		ptemp <- ptemp + scale_x_continuous(paste0('Log', fc.cutoff.base, ' fold change'), limits=c(-x.lim, x.lim))
+          
      		## add protein name
       		if (ProteinName) {
       			if(length(unique(subtemp$colgroup)) == 1 & any(unique(subtemp$colgroup) == 'black')){
@@ -283,9 +250,9 @@ VolcanoPlot <- function(data             = data,
       		## cutoff lines, FDR only
      		if (!FCcutoff) { 
         		if (logBase.pvalue == 2) {
-          			sigcut <- data.frame(Protein='sigline', logFC=seq(-x.lim, x.lim, length.out=20), log2adjp=(-log2(sig)), line='twodash')
+          			sigcut <- data.frame(Protein='sigline', logFC=seq(-x.lim, x.lim, length.out=20), log.adjp=(-log(sig, base = fc.cutoff.base)), line='twodash')
           
-          			pfinal <- ptemp + geom_line(data=sigcut, aes_string(x='logFC', y='log2adjp', linetype='line'), 
+          			pfinal <- ptemp + geom_line(data=sigcut, aes_string(x='logFC', y='log.adjp', linetype='line'), 
           			                            colour="darkgrey", 
           			                            size=0.6, 
           			                            show.legend=TRUE)+
@@ -318,26 +285,26 @@ VolcanoPlot <- function(data             = data,
            				## three different lines
             			sigcut <- data.frame(Protein='sigline', 
             			                     logFC=seq(-x.lim, x.lim, length.out=10), 
-            			                     log2adjp=(-log2(sig)), 
+            			                     log.adjp=(-log(sig, base = fc.cutoff.base)), 
             			                     line='twodash')
             			FCcutpos <- data.frame(Protein='sigline', 
             			                       logFC=log2(FCcutoff), 
-            			                       log2adjp=seq(y.limdown, y.limup, length.out=10), 
+            			                       log.adjp=seq(y.limdown, y.limup, length.out=10), 
             			                       line='dotted')
             			FCcutneg <- data.frame(Protein='sigline', 
             			                       logFC=(-log2(FCcutoff)), 
-            			                       log2adjp=seq(y.limdown, y.limup, length.out=10), 
+            			                       log.adjp=seq(y.limdown, y.limup, length.out=10), 
             			                       line='dotted')
             
             			## three lines, with order color first and then assign linetype manual
-            			pfinal <- ptemp+geom_line(data=sigcut, aes_string(x='logFC', y='log2adjp', linetype='line'), 
+            			pfinal <- ptemp+geom_line(data=sigcut, aes_string(x='logFC', y='log.adjp', linetype='line'), 
             			                          colour="darkgrey", 
             			                          size=0.6, 
             			                          show.legend=TRUE)+
-            				geom_line(data=FCcutpos, aes_string(x='logFC', y='log2adjp', linetype='line'), 
+            				geom_line(data=FCcutpos, aes_string(x='logFC', y='log.adjp', linetype='line'), 
             				          colour="darkgrey", 
             				          size=0.6, show.legend=TRUE)+
-            				geom_line(data=FCcutneg, aes_string(x='logFC', y='log2adjp', linetype='line'), 
+            				geom_line(data=FCcutneg, aes_string(x='logFC', y='log.adjp', linetype='line'), 
             				          colour="darkgrey", 
             				          size=0.6)+
             			    scale_linetype_manual(values=c('dotted'=3, 'twodash'=6), 
@@ -386,7 +353,7 @@ VolcanoPlot <- function(data             = data,
             			## three different lines
             			sigcut <- data.frame(Protein='sigline', 
             			                     logFC=seq(-x.lim, x.lim, length.out=10), 
-            			                     log2adjp=(-log2(sig)), 
+            			                     log.adjp=(-log2(sig)), 
             			                     line='twodash')
             			FCcutpos <- data.frame(Protein='sigline', 
             			                       logFC=log10(FCcutoff), 
